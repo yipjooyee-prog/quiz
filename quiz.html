@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中文词汇测验</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Keyframe animations for a more dynamic UI */
+        @keyframes scaleIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideInLeft {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes scaleUp {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .animate-scaleIn { animation: scaleIn 0.5s ease-out forwards; }
+        .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
+        .animate-slideInLeft { animation: slideInLeft 0.5s ease-out forwards; }
+        .animate-bounce { animation: bounce 1s infinite; }
+        .animate-scaleUp { animation: scaleUp 0.3s ease-in-out forwards; }
+        .delay-100 { animation-delay: 0.1s; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="root"></div>
+
+    <!-- React, ReactDOM, and Babel from CDN. This allows us to write JSX directly. -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- The entire React application logic, now using JSX for readability. -->
+    <script type="text/babel">
+        // Helper functions for the Gemini TTS API
+        // Converts a base64 string to an ArrayBuffer.
+        const base64ToArrayBuffer = (base64) => {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        };
+        
+        // Converts PCM audio data to a WAV blob for playback.
+        const pcmToWav = (pcmData, sampleRate) => {
+            const dataLength = pcmData.length * 2;
+            const buffer = new ArrayBuffer(44 + dataLength);
+            const view = new DataView(buffer);
+            
+            // WAV file header
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + dataLength, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataLength, true);
+            
+            // Write PCM data
+            let offset = 44;
+            for (let i = 0; i < pcmData.length; i++) {
+                view.setInt16(offset, pcmData[i], true);
+                offset += 2;
+            }
+            
+            return new Blob([view], { type: 'audio/wav' });
+        };
+        
+        // Helper to write string to DataView.
+        const writeString = (view, offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+
+        // Define the quiz questions as an array of objects.
+        const questions = [
+            {
+                type: 'multiple-choice',
+                questionText: '“小明是一个很**勤奋**的学生。” 勤奋的意思是?',
+                targetWord: '勤奋',
+                answerOptions: [
+                    { answerText: '喜欢玩耍', isCorrect: false },
+                    { answerText: '用功努力', isCorrect: true },
+                    { answerText: '动作很快', isCorrect: false },
+                    { answerText: '喜欢睡觉', isCorrect: false },
+                ],
+                pinyin: 'qín fèn',
+            },
+            {
+                type: 'fill-in-the-blank',
+                questionText: '他看到妈妈很累，就主动去______。 (帮)',
+                targetWord: '帮忙',
+                answerText: '帮忙',
+                pinyin: 'bāng máng',
+            },
+            {
+                type: 'multiple-choice',
+                questionText: '“老师对我的表现很**满意**。” 满意是什么意思?',
+                targetWord: '满意',
+                answerOptions: [
+                    { answerText: '感到高兴、符合心愿', isCorrect: true },
+                    { answerText: '感到很生气', isCorrect: false },
+                    { answerText: '感到很伤心', isCorrect: false },
+                    { answerText: '感到很害怕', isCorrect: false },
+                ],
+                pinyin: 'mǎn yì',
+            },
+            {
+                type: 'fill-in-the-blank',
+                questionText: '今天的天气真好，很______。 (温暖)',
+                targetWord: '温暖',
+                answerText: '温暖',
+                pinyin: 'wēn nuǎn',
+            },
+            {
+                type: 'multiple-choice',
+                questionText: '“他的房间很**整齐**。” 整齐的反义词是?',
+                targetWord: '整齐',
+                answerOptions: [
+                    { answerText: '干净', isCorrect: false },
+                    { answerText: '漂亮', isCorrect: false },
+                    { answerText: '凌乱', isCorrect: true },
+                    { answerText: '巨大', isCorrect: false },
+                ],
+                pinyin: 'zhěng qí',
+            },
+            {
+                type: 'fill-in-the-blank',
+                questionText: '同学们都非常______新老师的到来。 (欢迎)',
+                targetWord: '欢迎',
+                answerText: '欢迎',
+                pinyin: 'huān yíng',
+            },
+            {
+                type: 'multiple-choice',
+                questionText: '“我**终于**把作业做完了！” 终于的意思是?',
+                targetWord: '终于',
+                answerOptions: [
+                    { answerText: '刚刚开始', isCorrect: false },
+                    { answerText: '最后、经过漫长等待', isCorrect: true },
+                    { answerText: '现在立刻', isCorrect: false },
+                    { answerText: '有时候', isCorrect: false },
+                ],
+                pinyin: 'zhōng yú',
+            },
+            {
+                type: 'fill-in-the-blank',
+                questionText: '我们应该______帮助有困难的人。 (乐于)',
+                targetWord: '乐于',
+                answerText: '乐于',
+                pinyin: 'lè yú',
+            },
+            {
+                type: 'multiple-choice',
+                questionText: '“我非常**佩服**他的勇气。” 佩服的意思是?',
+                targetWord: '佩服',
+                answerOptions: [
+                    { answerText: '看不起', isCorrect: false },
+                    { answerText: '尊敬和钦佩', isCorrect: true },
+                    { answerText: '嘲笑', isCorrect: false },
+                    { answerText: '害怕', isCorrect: false },
+                ],
+                pinyin: 'pèi fú',
+            },
+            {
+                type: 'fill-in-the-blank',
+                questionText: '我们要爱护环境，保护地球上的______。 (资源)',
+                targetWord: '资源',
+                answerText: '资源',
+                pinyin: 'zī yuán',
+            },
+            {
+                type: 'multiple-choice',
+                questionText: '“这个故事很**精彩**。” 精彩是什么意思?',
+                targetWord: '精彩',
+                answerOptions: [
+                    { answerText: '无聊、乏味', isCorrect: false },
+                    { answerText: '内容丰富、出色', isCorrect: true },
+                    { answerText: '平淡无奇', isCorrect: false },
+                    { answerText: '很短', isCorrect: false },
+                ],
+                pinyin: 'jīng cǎi',
+            },
+            {
+                type: 'fill-in-the-blank',
+                questionText: '我______到明天能去公园玩。 (希望)',
+                targetWord: '希望',
+                answerText: '希望',
+                pinyin: 'xī wàng',
+            },
+            {
+                type: 'multiple-choice',
+                questionText: '“他是一个很**诚实**的孩子。” 诚实的反义词是?',
+                targetWord: '诚实',
+                answerOptions: [
+                    { answerText: '勇敢', isCorrect: false },
+                    { answerText: '善良', isCorrect: false },
+                    { answerText: '虚伪', isCorrect: true },
+                    { answerText: '害羞', isCorrect: false },
+                ],
+                pinyin: 'chéng shí',
+            },
+            {
+                type: 'fill-in-the-blank',
+                questionText: '我的______是长大后成为一名医生。 (理想)',
+                targetWord: '理想',
+                answerText: '理想',
+                pinyin: 'lǐ xiǎng',
+            },
+            {
+                type: 'multiple-choice',
+                questionText: '“他**严肃**地看着我。” 严肃是什么意思?',
+                targetWord: '严肃',
+                answerOptions: [
+                    { answerText: '很开心、大笑', isCorrect: false },
+                    { answerText: '神情庄重、不苟言笑', isCorrect: true },
+                    { answerText: '很调皮', isCorrect: false },
+                    { answerText: '很放松', isCorrect: false },
+                ],
+                pinyin: 'yán sù',
+            },
+        ];
+
+        // The main App component for our Chinese vocabulary quiz.
+        const App = () => {
+            const [currentQuestion, setCurrentQuestion] = React.useState(0);
+            const [showScore, setShowScore] = React.useState(false);
+            const [score, setScore] = React.useState(0);
+            const [answered, setAnswered] = React.useState(false);
+            const [lastCorrect, setLastCorrect] = React.useState(null);
+            const [fillInAnswer, setFillInAnswer] = React.useState('');
+            const [hint, setHint] = React.useState('');
+            const [isHintLoading, setIsHintLoading] = React.useState(false);
+            const [isSpeaking, setIsSpeaking] = React.useState(false);
+
+            // Function to handle the user's answer selection for multiple-choice questions.
+            const handleMultipleChoiceClick = (isCorrect) => {
+                if (answered) return;
+                
+                if (isCorrect) {
+                    setScore(score + 1);
+                }
+                
+                setLastCorrect(isCorrect);
+                setAnswered(true);
+            };
+            
+            // Function to handle the submission of a fill-in-the-blank answer.
+            const handleFillInSubmit = () => {
+                if (answered) return;
+                const isCorrect = fillInAnswer.trim().toLowerCase() === questions[currentQuestion].answerText.trim().toLowerCase();
+                if (isCorrect) {
+                    setScore(score + 1);
+                }
+                setLastCorrect(isCorrect);
+                setAnswered(true);
+            };
+
+            // Function to handle moving to the next question.
+            const handleNextQuestion = () => {
+                const nextQuestion = currentQuestion + 1;
+                if (nextQuestion < questions.length) {
+                    setCurrentQuestion(nextQuestion);
+                    setAnswered(false);
+                    setLastCorrect(null);
+                    setFillInAnswer('');
+                    setHint('');
+                } else {
+                    setShowScore(true);
+                }
+            };
+
+            // Function to restart the quiz.
+            const handleRestartQuiz = () => {
+                setCurrentQuestion(0);
+                setScore(0);
+                setShowScore(false);
+                setAnswered(false);
+                setLastCorrect(null);
+                setFillInAnswer('');
+                setHint('');
+            };
+
+            // Function to get a hint using the Gemini API
+            const handleGetHint = async () => {
+                setIsHintLoading(true);
+                setHint('');
+                try {
+                    const targetWord = questions[currentQuestion].targetWord;
+                    const prompt = `Please provide a simple and friendly English explanation for the Chinese word "${targetWord}". Also, include a short example sentence in Chinese with its English translation. The explanation should be suitable for a Primary 6 student in Singapore and no more than 50 words.`;
+                    const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                    const payload = { contents: chatHistory };
+                    const apiKey = "AIzaSyAsw0vcxoFVumtEqE8e5cCq2Z_f_7MtVeY";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+                    const result = await response.json();
+                    const generatedText = result.candidates[0].content.parts[0].text;
+                    setHint(generatedText);
+                } catch (error) {
+                    console.error('Error generating hint:', error);
+                    setHint('抱歉，获取提示时出错。请再试一次。 (Sorry, there was an error getting the hint. Please try again.)');
+                } finally {
+                    setIsHintLoading(false);
+                }
+            };
+
+            // Function to handle Text-to-Speech using the Gemini API
+            const handleTextToSpeech = async () => {
+                if (isSpeaking) return;
+                setIsSpeaking(true);
+                try {
+                    const textToSpeak = questions[currentQuestion].questionText;
+                    const payload = {
+                        contents: [{ parts: [{ text: `Say in a gentle voice: ${textToSpeak}` }] }],
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
+                                voiceConfig: {
+                                    prebuiltVoiceConfig: { voiceName: "Achird" }
+                                }
+                            }
+                        },
+                        model: "gemini-2.5-flash-preview-tts"
+                    };
+                    const apiKey = "AIzaSyAsw0vcxoFVumtEqE8e5cCq2Z_f_7MtVeY";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+                    const result = await response.json();
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    const audioData = part?.inlineData?.data;
+                    const mimeType = part?.inlineData?.mimeType;
+
+                    if (audioData && mimeType && mimeType.startsWith("audio/")) {
+                        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+                        if (!sampleRateMatch) throw new Error('Could not find sample rate in mimeType.');
+                        const sampleRate = parseInt(sampleRateMatch[1], 10);
+                        const pcmData = base64ToArrayBuffer(audioData);
+                        const pcm16 = new Int16Array(pcmData);
+                        const wavBlob = pcmToWav(pcm16, sampleRate);
+                        const audioUrl = URL.createObjectURL(wavBlob);
+                        const audio = new Audio(audioUrl);
+                        audio.onended = () => { setIsSpeaking(false); };
+                        audio.play();
+                    } else {
+                        throw new Error('Invalid audio data received from API.');
+                    }
+                } catch (error) {
+                    console.error('Error with Text-to-Speech:', error);
+                    setIsSpeaking(false);
+                }
+            };
+            
+            // This component renders the final score screen.
+            const FinalScoreScreen = () => (
+                <div className="flex flex-col items-center justify-center text-center">
+                    <div className="text-6xl mb-4 animate-bounce">🎉</div>
+                    <h2 className="text-4xl font-extrabold text-gray-800 mb-4 animate-fadeIn">
+                        你得了 {score} 分，满分 {questions.length} 分!
+                    </h2>
+                    <p className="text-xl text-gray-600 mb-8 animate-fadeIn delay-100">
+                        你真棒！再接再厉！
+                    </p>
+                    <button
+                        onClick={handleRestartQuiz}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-full text-xl shadow-lg transition-all duration-300 transform hover:scale-110 active:scale-95"
+                    >
+                        重新开始
+                    </button>
+                </div>
+            );
+            
+            // This component renders the current question screen.
+            const QuestionScreen = () => {
+                const currentQuestionObj = questions[currentQuestion];
+                return (
+                    <>
+                        <div className="flex justify-between items-center mb-6">
+                            <div className="text-xl font-semibold text-gray-500">
+                                <span className="text-purple-600">第 {currentQuestion + 1} 题</span>
+                                 / {questions.length}
+                            </div>
+                        </div>
+                        <div className="mb-8">
+                            <div className="flex items-center gap-4">
+                                <h1 className="text-3xl md:text-4xl font-bold text-gray-800 leading-tight animate-slideInLeft">
+                                    {currentQuestionObj.questionText}
+                                </h1>
+                                <button
+                                    onClick={handleTextToSpeech}
+                                    disabled={isSpeaking}
+                                    className="p-3 bg-purple-500 hover:bg-purple-600 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                >
+                                    {isSpeaking ? (
+                                        <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M12 21.35C16.97 18.06 20 14.59 20 10.25c0-3.32-2.69-6.01-6-6.01s-6 2.69-6 6.01c0 4.34 3.03 7.81 8 11.1zM12 4.25c2.9 0 5.25 2.35 5.25 5.25 0 3.12-2.31 5.95-6.75 9.47-4.44-3.52-6.75-6.35-6.75-9.47 0-2.9 2.35-5.25 5.25-5.25zM12 6.75c-1.54 0-2.75 1.21-2.75 2.75h5.5c0-1.54-1.21-2.75-2.75-2.75z"></path>
+                                            <path d="M14 13.5v-3c0-1.1-.9-2-2-2s-2 .9-2 2v3h4z"></path>
+                                        </svg>
+                                    )}
+                                </button>
+                            </div>
+                            {currentQuestionObj.pinyin && <p className="text-lg text-gray-500 mt-2">{currentQuestionObj.pinyin}</p>}
+                        </div>
+                        <div className="flex flex-col space-y-4">
+                            {currentQuestionObj.type === 'multiple-choice' &&
+                                currentQuestionObj.answerOptions.map((answerOption, index) => (
+                                    <button
+                                        key={index}
+                                        onClick={() => handleMultipleChoiceClick(answerOption.isCorrect)}
+                                        className={`
+                                            w-full text-left py-4 px-6 rounded-2xl border-2 transition-all duration-300
+                                            text-xl font-medium shadow-md
+                                            ${
+                                                answered
+                                                    ? answerOption.isCorrect
+                                                        ? 'bg-green-500 border-green-600 text-white animate-scaleUp'
+                                                        : lastCorrect === false && !answerOption.isCorrect
+                                                            ? 'bg-red-500 border-red-600 text-white animate-scaleUp'
+                                                            : 'bg-gray-200 border-gray-300 text-gray-700 hover:bg-gray-300 cursor-not-allowed'
+                                                    : 'bg-white border-purple-300 text-gray-800 hover:bg-purple-100 transform hover:-translate-y-1'
+                                            }
+                                        `}
+                                        disabled={answered}
+                                    >
+                                        {answerOption.answerText}
+                                    </button>
+                                ))
+                            }
+                            {currentQuestionObj.type === 'fill-in-the-blank' &&
+                                <div className="flex flex-col items-center space-y-4">
+                                    <input
+                                        type="text"
+                                        value={fillInAnswer}
+                                        onChange={(e) => setFillInAnswer(e.target.value)}
+                                        className="w-full md:w-2/3 p-4 text-center text-2xl rounded-2xl border-2 border-purple-300 focus:outline-none focus:ring-4 focus:ring-purple-200 transition-all duration-300"
+                                        placeholder="在此输入答案"
+                                        disabled={answered}
+                                    />
+                                    <button
+                                        onClick={handleFillInSubmit}
+                                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-full text-xl shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95"
+                                        disabled={answered}
+                                    >
+                                        提交
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                        <div className="mt-8 flex justify-center items-center flex-col">
+                            {!answered && (
+                                <button
+                                    onClick={handleGetHint}
+                                    disabled={isHintLoading}
+                                    className="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-3 px-6 rounded-full text-lg shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed mb-4"
+                                >
+                                    {isHintLoading ? (
+                                        <span className="flex items-center gap-2">
+                                            <svg className="animate-spin h-5 w-5 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            加载提示...
+                                        </span>
+                                    ) : (
+                                        '获取提示 ✨'
+                                    )}
+                                </button>
+                            )}
+                            {hint && (
+                                <div className="bg-gray-100 p-4 rounded-2xl shadow-inner text-gray-700 text-base animate-fadeIn border-2 border-gray-200 w-full mb-4">
+                                    {hint}
+                                </div>
+                            )}
+                            {answered && (
+                                <div className="flex justify-center items-center flex-col animate-fadeIn">
+                                    <div
+                                        className={`p-4 rounded-full font-bold text-xl mb-4 shadow-lg ${lastCorrect ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
+                                    >
+                                        {lastCorrect ? '✅ 答对了！' : '❌ 答错了！'}
+                                    </div>
+                                    <button
+                                        onClick={handleNextQuestion}
+                                        className="bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95"
+                                    >
+                                        {currentQuestion + 1 === questions.length ? '查看成绩' : '下一题'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                );
+            };
+
+            return (
+                <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-pink-300 to-purple-400 p-4">
+                    <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-8 md:p-12 transform transition-all duration-500 hover:scale-105 border-4 border-white animate-scaleIn">
+                        {showScore ? <FinalScoreScreen /> : <QuestionScreen />}
+                    </div>
+                </div>
+            );
+        };
+
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    </script>
+</body>
+</html>
